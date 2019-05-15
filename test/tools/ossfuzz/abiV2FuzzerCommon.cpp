@@ -7,12 +7,9 @@ SolidityCompilationFramework::SolidityCompilationFramework(langutil::EVMVersion 
 	m_evmVersion = _evmVersion;
 }
 
-dev::bytes SolidityCompilationFramework::compileContract(std::string const& _sourceCode)
+dev::bytes SolidityCompilationFramework::compileContract(std::string const& _sourceCode, std::string const& _contractName)
 {
-	// Silence compiler version warning
-	std::string sourceCode = "pragma solidity >=0.0;\n";
-	sourceCode += "pragma experimental ABIEncoderV2;\n";
-	sourceCode += _sourceCode;
+	std::string sourceCode = _sourceCode;
 	m_compiler.setSources({{"", sourceCode}});
 	m_compiler.setEVMVersion(m_evmVersion);
 	m_compiler.setOptimiserSettings(m_optimiserSettings);
@@ -27,6 +24,6 @@ dev::bytes SolidityCompilationFramework::compileContract(std::string const& _sou
 			);
 		std::cerr << "Compiling contract failed" << std::endl;
 	}
-	dev::eth::LinkerObject obj = m_compiler.runtimeObject(m_compiler.lastContractName());
+	dev::eth::LinkerObject obj = m_compiler.runtimeObject(_contractName);
 	return obj.bytecode;
 }

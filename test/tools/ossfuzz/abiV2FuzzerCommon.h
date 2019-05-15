@@ -21,7 +21,7 @@ public:
 	{
 		return m_compiler.methodIdentifiers(m_compiler.lastContractName());
 	}
-	dev::bytes compileContract(std::string const& _sourceCode);
+	dev::bytes compileContract(std::string const& _sourceCode, std::string const& _contractName);
 protected:
 	dev::solidity::CompilerStack m_compiler;
 	langutil::EVMVersion m_evmVersion;
