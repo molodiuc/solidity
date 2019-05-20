@@ -1819,15 +1819,20 @@ BOOST_AUTO_TEST_CASE(constructor)
 			}
 		}
 	)";
-	compileAndRun(sourceCode);
-	map<u256, uint8_t> data;
-	data[7] = 8;
-	auto get = [&](u256 const& _x) -> u256
-	{
-		return data[_x];
-	};
-	testContractAgainstCpp("get(uint256)", get, u256(6));
-	testContractAgainstCpp("get(uint256)", get, u256(7));
+
+	using Data = map<u256, uint8_t>;
+
+	ALSO_VIA_YUL(
+		compileAndRun(sourceCode);
+		Data data;
+		data[7] = 8;
+		auto get = [&](u256 const& _x) -> u256
+		{
+			return data[_x];
+		};
+		testContractAgainstCpp("get(uint256)", get, u256(6));
+		testContractAgainstCpp("get(uint256)", get, u256(7));
+	);
 }
 
 BOOST_AUTO_TEST_CASE(simple_accessor)
