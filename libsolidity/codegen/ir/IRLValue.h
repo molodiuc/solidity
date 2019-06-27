@@ -127,5 +127,31 @@ private:
 	std::string const m_slot;
 };
 
+class IRMemoryItem: public IRLValue
+{
+public:
+	IRMemoryItem(
+		IRGenerationContext& _context,
+		std::string _address,
+		bool _padded,
+		bool _calldata,
+		Type const& _type
+	);
+	std::string retrieveValue() const override;
+	std::string storeValue(std::string const& _value, Type const& _type) const override;
+
+	std::string setToZero() const override;
+private:
+	IRMemoryItem(
+		IRGenerationContext& _context,
+		Type const& _type,
+		std::pair<u256, unsigned> slot_offset
+	);
+
+	std::string const m_address;
+	bool m_padded;
+	bool m_calldata;
+};
+
 }
 }

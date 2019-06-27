@@ -17,9 +17,19 @@ contract C {
 
 		return func() == internal_func();
 	}
-	function external_func() external pure returns (int8)
+	function delete_memory_array() public returns (bool ret)
 	{
-		return 1;
+		uint[] memory array = new uint[](7);
+
+		for (uint i = 0; i < 7; i++)
+			array[i] = i + 1;
+
+		delete array;
+
+		for (uint i = 0; i < 7; i++)
+			require(array[i] == 0);
+
+		return array.length == 7;
 	}
 }
 // ====
@@ -27,3 +37,4 @@ contract C {
 // ----
 // call_deleted_internal_func() -> FAILURE
 // call_internal_func() -> true
+// delete_memory_array() -> true

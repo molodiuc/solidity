@@ -754,6 +754,55 @@ string YulUtilFunctions::storageArrayIndexAccessFunction(ArrayType const& _type)
 	});
 }
 
+string YulUtilFunctions::memoryArrayIndexAccessFunction(ArrayType const& _type)
+{
+	string functionName = "memory_array_index_access_" + _type.identifier();
+	return m_functionCollector->createFunction(functionName, [&]() {
+		return Whiskers(R"(
+			function <functionName>(baseRef, index) -> addr {
+				let offset := index
+				<?noByteArray>
+					offset := mul(index, <headSize>)
+				</noByteArray>
+				<?dynamicallySized>
+					offset := add(offset, 32)
+				</dynamicallySized>
+				addr := add(baseRef, offset)
+			}
+		)")
+		("functionName", functionName)
+		("headSize", to_string(_type.memoryHeadSize()))
+		("noByteArray", !_type.isByteArray())
+		("dynamicallySized", _type.isDynamicallySized())
+		.render();
+	});
+}
+
+string YulUtilFunctions::calldataArrayIndexAccessFunction(ArrayType const& _type)
+{
+	string functionName = "calldata_array_index_access_" + _type.identifier();
+	return m_functionCollector->createFunction(functionName, [&]() {
+		string multiplier = "1";
+
+		if (!_type.isByteArray())
+		{
+			if (_type.baseType()->isDynamicallyEncoded())
+				multiplier = "32";
+			else
+				multiplier = to_string(_type.baseType()->calldataEncodedSize());
+		}
+
+		return Whiskers(R"(
+			function <functionName>(baseRef, index) -> addr {
+				addr := add(baseRef, mul(index, <multiplier>))
+			}
+		)")
+		("functionName", functionName)
+		("multiplier", multiplier)
+		.render();
+	});
+}
+
 string YulUtilFunctions::nextArrayElementFunction(ArrayType const& _type)
 {
 	solAssert(!_type.isByteArray(), "");
@@ -881,6 +930,70 @@ string YulUtilFunctions::readFromStorageDynamic(Type const& _type, bool _splitFu
 	});
 }
 
+string YulUtilFunctions::readFromMemory(Type const& _type, bool _fromCalldata, bool _padToWords)
+{
+	string functionName =
+		string("read_from_") +
+		(_fromCalldata ? "calldata" : "memory") +
+		"_dynamic_" +
+		_type.identifier();
+
+	return m_functionCollector->createFunction(functionName, [&] {
+		if (auto arrayType = dynamic_cast<ArrayType const*>(&_type))
+		{
+			solAssert(!arrayType->isDynamicallySized(), "");
+			solAssert(!_fromCalldata, "");
+			solAssert(_padToWords, "");
+
+			return Whiskers(R"(
+				function <functionName>(addr) -> value {
+					value := addr
+				}
+			)")
+			("functionName", functionName)
+			.render();
+		}
+
+		unsigned numBytes = _type.calldataEncodedSize(_padToWords);
+
+		solAssert(numBytes != 0, "");
+
+		if (auto const* funType = dynamic_cast<FunctionType const*>(&_type))
+			if (funType->kind() == FunctionType::Kind::External)
+				return Whiskers(R"(
+					function <functionName>(addr) -> addr, selector {
+						addr := <load>(addr)
+						addr, selector := <splitFunction>(addr)
+						<?needsValidation>
+							selector := <validate>(selector)
+						</needsValidation>
+					}
+				)")
+				("functionName", functionName)
+				("load", _fromCalldata ? "calldataload" : "mload")
+				("needsValidation", _fromCalldata)
+				("validate", _fromCalldata ? validatorFunction(_type) : "")
+				("splitFunction", splitExternalFunctionIdFunction())
+				.render();
+
+		solAssert(numBytes <= 32, "Static memory load of more than 32 bytes requested.");
+
+		return Whiskers(R"(
+			function <functionName>(addr) -> value {
+				value := <load>(addr)
+				<?needsValidation>
+					value := <validate>(value)
+				</needsValidation>
+			}
+		)")
+		("functionName", functionName)
+		("load", _fromCalldata ? "calldataload" : "mload")
+		("needsValidation", _fromCalldata)
+		("validate", _fromCalldata ? validatorFunction(_type) : "")
+		.render();
+	});
+}
+
 string YulUtilFunctions::updateStorageValueFunction(Type const& _type, boost::optional<unsigned> const _offset)
 {
 	string const functionName =
@@ -918,6 +1031,70 @@ string YulUtilFunctions::updateStorageValueFunction(Type const& _type, boost::op
 				solUnimplementedAssert(false, "");
 			else
 				solAssert(false, "Invalid non-value type for assignment.");
+		}
+	});
+}
+
+string YulUtilFunctions::updateMemoryValueFunction(Type const& _type, bool _pad)
+{
+	if (auto ref = dynamic_cast<ReferenceType const*>(&_type))
+	{
+		solUnimplementedAssert(
+				ref->location() == DataLocation::Memory,
+				"Only in-memory reference type can be stored."
+				);
+
+		return updateMemoryValueFunction(*TypeProvider::uint256(), _pad);
+	}
+
+	string const functionName =
+		string("update_memory_value_") +
+		(_pad ? "padded_" : "") +
+		_type.identifier();
+
+	return m_functionCollector->createFunction(functionName, [&] {
+		if (/*auto str = */dynamic_cast<StringLiteralType const*>(&_type))
+		{
+			/*m_context << Instruction::DUP1;
+			storeStringData(bytesConstRef(str->value()));
+			if (_padToWordBoundaries)
+				m_context << u256(max<size_t>(32, ((str->value().size() + 31) / 32) * 32));
+			else
+				m_context << u256(str->value().size());
+			m_context << Instruction::ADD;*/
+			solUnimplemented("String literals not yet implemented!");
+		}
+		else if (
+			_type.category() == Type::Category::Function &&
+			dynamic_cast<FunctionType const&>(_type).kind() == FunctionType::Kind::External
+		)
+		{
+			return Whiskers(R"(
+				function <functionName>(addr, selector, addr) {
+					mstore(addr, <combine>(addr, selector))
+				}
+			)")
+			("functionName", functionName)
+			("combine", combineExternalFunctionIdFunction())
+			.render();
+		}
+		else if (_type.isValueType())
+		{
+			return Whiskers(R"(
+				function <functionName>(addr, value) {
+					mstore(addr, <cleanup>(value))
+			}
+			)")
+			("functionName", functionName)
+			("cleanup", cleanupFunction(_type))
+			.render();
+		}
+		else // Should never happen
+		{
+			solAssert(
+				false,
+				"Memory store of type " + _type.toString(true) + " not allowed."
+			);
 		}
 	});
 }
@@ -1038,6 +1215,28 @@ string YulUtilFunctions::allocationFunction()
 	});
 }
 
+string YulUtilFunctions::allocateMemoryArrayFunction(ArrayType const& _type)
+{
+	solUnimplementedAssert(!_type.isByteArray(), "");
+
+	string functionName = "allocate_memory_array_" + _type.identifier();
+	return m_functionCollector->createFunction(functionName, [&]() {
+		return Whiskers(R"(
+			function <functionName>(size) -> memPtr {
+				memPtr := <alloc>(<allocSize>(size))
+				<?dynamic>
+				mstore(memPtr, size)
+				</dynamic>
+			}
+		)")
+		("functionName", functionName)
+		("alloc", allocationFunction())
+		("allocSize", arrayAllocationSizeFunction(_type))
+		("dynamic", _type.isDynamicallySized())
+		.render();
+	});
+}
+
 string YulUtilFunctions::conversionFunction(Type const& _from, Type const& _to)
 {
 	if (_from.sizeOnStack() != 1 || _to.sizeOnStack() != 1)
@@ -1146,6 +1345,27 @@ string YulUtilFunctions::conversionFunction(Type const& _from, Type const& _to)
 			solUnimplemented("Fixed point types not implemented.");
 			break;
 		case Type::Category::Array:
+			if (_from == _to)
+			{
+				body = "converted := value";
+				break;
+			}
+			else
+			{
+				ArrayType const& from = dynamic_cast<decltype(from)>(_from);
+				ArrayType const& to   = dynamic_cast<decltype(to)>  (_to);
+
+				ReferenceType const& fromNoPtr =
+					*TypeProvider::withLocation(&from, from.location(), false);
+				ReferenceType const& toNoPtr =
+					*TypeProvider::withLocation(&to, to.location(), false);
+
+				if (fromNoPtr == toNoPtr)
+				{
+					body = "converted := value";
+					break;
+				}
+			}
 			solUnimplementedAssert(false, "Array conversion not implemented.");
 			break;
 		case Type::Category::Struct:

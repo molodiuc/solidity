@@ -146,6 +146,16 @@ public:
 	/// signature: (array, index) -> slot, offset
 	std::string storageArrayIndexAccessFunction(ArrayType const& _type);
 
+	/// @returns the name of a function that returns the memory address for the
+	/// given array base ref and index
+	/// signature: (baseRef, index) -> address
+	std::string memoryArrayIndexAccessFunction(ArrayType const& _type);
+
+	/// @returns the name of a function that returns the calldata memory address for the
+	/// given array base ref and index
+	/// signature: (baseRef, index) -> address
+	std::string calldataArrayIndexAccessFunction(ArrayType const& _type);
+
 	/// @returns the name of a function that advances an array data pointer to the next element.
 	/// Only works for memory arrays, calldata arrays and storage arrays that every item occupies one or multiple full slots.
 	std::string nextArrayElementFunction(ArrayType const& _type);
@@ -162,6 +172,8 @@ public:
 	std::string readFromStorage(Type const& _type, size_t _offset, bool _splitFunctionTypes);
 	std::string readFromStorageDynamic(Type const& _type, bool _splitFunctionTypes);
 
+	std::string readFromMemory(Type const& _type, bool _fromCalldata, bool _padToWords);
+
 	/// @returns a function that extracts a value type from storage slot that has been
 	/// retrieved already.
 	/// Performs bit mask/sign extend cleanup and appropriate left / right shift, but not validation.
@@ -175,6 +187,11 @@ public:
 	/// runtime parameter.
 	/// signature: (slot, [offset,] value)
 	std::string updateStorageValueFunction(Type const& _type, boost::optional<unsigned> const _offset = boost::optional<unsigned>());
+
+	/// Returns the name of a function will write the given value to
+	/// the specified address.
+	/// signature: (address, value) ->
+	std::string updateMemoryValueFunction(Type const& _type, bool _pad);
 
 	/// Performs cleanup after reading from a potentially compressed storage slot.
 	/// The function does not perform any validation, it just masks or sign-extends
@@ -196,6 +213,8 @@ public:
 	/// Arguments: size
 	/// Return value: pointer
 	std::string allocationFunction();
+
+	std::string allocateMemoryArrayFunction(ArrayType const& _type);
 
 	/// @returns the name of the function that converts a value of type @a _from
 	/// to a value of type @a _to. The resulting vale is guaranteed to be in range

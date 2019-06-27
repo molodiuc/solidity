@@ -166,3 +166,75 @@ string IRStorageArrayLength::setToZero() const
 {
 	return storeValue("0", *TypeProvider::uint256());
 }
+
+IRMemoryItem::IRMemoryItem(
+	IRGenerationContext& _context,
+	std::string _address,
+	bool _calldata,
+	bool _padded,
+	Type const& _type
+):
+	IRLValue(_context, &_type),
+	m_address(move(_address)),
+	m_padded(_padded),
+	m_calldata(_calldata)
+
+{ }
+
+string IRMemoryItem::retrieveValue() const
+{
+	if (m_type->isValueType())
+		return m_context.utils().readFromMemory(*m_type, m_calldata, m_padded) +
+			"(" +
+			m_address +
+			")\n";
+	else if (m_calldata)
+		return "calldataload(" + m_address + ")\n";
+	else
+		return "mload(" + m_address + ")\n";
+}
+
+string IRMemoryItem::storeValue(string const& _value, Type const& _type) const
+{
+	solAssert(!m_calldata, "Can't store value in calldata memory!");
+
+	if (!m_type->isValueType())
+	{
+		solUnimplementedAssert(_type == *m_type, "Conversion not implemented for assignment to memory.");
+
+		solAssert(m_type->sizeOnStack() == 1, "");
+		return "mstore(" + m_address + ", " + _value + ")\n";
+	}
+
+	solAssert(_type.isValueType(), "");
+
+	string converted = _value;
+
+	if (_type != *m_type)
+		converted =
+			m_context.utils().conversionFunction(_type, *m_type) +
+			"(" +
+			_value +
+			")";
+
+	if (!m_padded)
+	{
+		solAssert(m_type->calldataEncodedSize(false) == 1, "Invalid non-padded type.");
+		if (m_type->category() == Type::Category::FixedBytes)
+			converted = "byte(0, " + converted + ")";
+
+		return "mstore8(" + m_address + ", " + converted + ")\n";
+	}
+	else
+		return m_context.utils().updateMemoryValueFunction(*m_type, m_padded) +
+			"(" +
+			m_address +
+			", " +
+			converted +
+			")\n";
+}
+
+string IRMemoryItem::setToZero() const
+{
+	return storeValue(m_context.utils().zeroValueFunction(*m_type) + "()", *m_type);
+}
