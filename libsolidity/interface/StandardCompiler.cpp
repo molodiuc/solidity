@@ -100,20 +100,19 @@ Json::Value formatErrorWithException(
 	return formatError(_warning, _type, _component, message, formattedMessage, sourceLocation);
 }
 
-set<string> requestedContractNames(Json::Value const& _outputSelection)
+pair<set<string>, set<string>> requestedSourceAndContractNames(Json::Value const& _outputSelection)
 {
-	set<string> names;
+	set<string> sources, contracts;
 	for (auto const& sourceName: _outputSelection.getMemberNames())
 	{
+		/// Consider the "all files" shortcuts as requesting everything.
+		if (sourceName == "*" || sourceName == "")
+			return {set<string>(), set<string>()};
+		sources.insert(sourceName);
 		for (auto const& contractName: _outputSelection[sourceName].getMemberNames())
-		{
-			/// Consider the "all sources" shortcuts as requesting everything.
-			if (contractName == "*" || contractName == "")
-				return set<string>();
-			names.insert((sourceName == "*" ? "" : sourceName) + ":" + contractName);
-		}
+			contracts.insert(sourceName + ":" + (contractName == "*" ? "" : contractName));
 	}
-	return names;
+	return {sources, contracts};
 }
 
 /// Returns true iff @a _hash (hex with 0x prefix) is the Keccak256 hash of the binary data in @a _content.
@@ -707,7 +706,9 @@ Json::Value StandardCompiler::compileSolidity(StandardCompiler::InputsAndSetting
 	compilerStack.setOptimiserSettings(std::move(_inputsAndSettings.optimiserSettings));
 	compilerStack.setLibraries(_inputsAndSettings.libraries);
 	compilerStack.useMetadataLiteralSources(_inputsAndSettings.metadataLiteralSources);
-	compilerStack.setRequestedContractNames(requestedContractNames(_inputsAndSettings.outputSelection));
+	auto requestedSourcesAndContracts = requestedSourceAndContractNames(_inputsAndSettings.outputSelection);
+	compilerStack.setRequestedSourceNames(requestedSourcesAndContracts.first);
+	compilerStack.setRequestedContractNames(requestedSourcesAndContracts.second);
 
 	compilerStack.enableIRGeneration(isIRRequested(_inputsAndSettings.outputSelection));
 

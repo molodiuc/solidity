@@ -220,6 +220,7 @@ bool CompilerStack::parse()
 	vector<string> sourcesToParse;
 	for (auto const& s: m_sources)
 		sourcesToParse.push_back(s.first);
+
 	for (size_t i = 0; i < sourcesToParse.size(); ++i)
 	{
 		string const& path = sourcesToParse[i];
@@ -396,6 +397,13 @@ bool CompilerStack::analyze()
 bool CompilerStack::parseAndAnalyze()
 {
 	return parse() && analyze();
+}
+
+bool CompilerStack::isRequestedSource(string const& _sourceName) const
+{
+	return
+		m_requestedSourceNames.empty() ||
+		m_requestedSourceNames.count(_sourceName);
 }
 
 bool CompilerStack::isRequestedContract(ContractDefinition const& _contract) const
@@ -900,7 +908,8 @@ void CompilerStack::resolveImports()
 	};
 
 	for (auto const& sourcePair: m_sources)
-		toposort(&sourcePair.second);
+		if (isRequestedSource(sourcePair.first))
+			toposort(&sourcePair.second);
 
 	swap(m_sourceOrder, sourceOrder);
 }
